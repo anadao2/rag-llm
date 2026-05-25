@@ -1,47 +1,108 @@
 # RAG-LLM
 
-API de ingestao para pipeline RAG usando FastAPI, OpenAI Embeddings, FAISS e worker assíncrono com Redis.
+API de ingestão para pipeline RAG usando **Domain-Driven Design (DDD)** e princípios **SOLID**.
 
-## Visao Geral
+## Visão Geral
 
-Este projeto indexa documentos `.txt` para uso em fluxos de Retrieval-Augmented Generation (RAG):
+Este projeto implementa uma arquitetura moderna com:
 
-- Leitura de arquivos em `data/docs`
-- Chunking de texto com sobreposicao configuravel
-- Geracao de embeddings via OpenAI
-- Persistencia vetorial local com FAISS
-- Processamento por API ou por fila (worker + Redis)
+- **Domain-Driven Design (DDD)** - Separação clara de domínio, aplicação e infraestrutura
+- **Princípios SOLID** - Código testável, extensível e desacoplado
+- **Pattern Strategy** - Múltiplas estratégias de chunking (OCP)
+- **Pattern Specification** - Composição de regras de filtro (OCP)
+- **Event-Driven** - Arquitetura desacoplada via eventos (DIP)
+
+### Funcionalidades
+
+- Leitura de arquivos `.txt` em `data/docs`
+- **Chunking com Strategy Pattern**: Sentence-aware, Fixed-size, e extensível
+- Geração de embeddings via OpenAI
+- Persistência vetorial local com FAISS
+- **Processamento**: Síncrono (API) ou assíncrono (Worker + Redis)
 
 ## Tecnologias
 
-- Python
-- FastAPI + Uvicorn
-- Redis
-- FAISS (`faiss-cpu`)
-- OpenAI API
-- Docker Compose
+- **Python 3.12**
+- **FastAPI** + Uvicorn
+- **Redis** (fila de processamento)
+- **FAISS** (`faiss-cpu`) - vetores
+- **OpenAI API** - embeddings
+- **Docker Compose**
 
-## Estrutura do Projeto
+## Arquitetura: DDD + SOLID
+
+## Estrutura do Projeto (Arquitetura DDD)
 
 ```text
 .
 |-- app/
-|   |-- api/routes/ingest.py
-|   |-- core/config.py
-|   |-- repositories/doc_repo.py
-|   |-- services/
-|   |-- schemas/
-|   |-- main.py
-|   `-- worker.py
+|   |-- domain/                    # Nucleo de negocio - zero dependencias externas
+|   |   |-- entities/              # Document, Chunk (identidade, lifecycle)
+|   |   |-- value_objects/         # DocumentId, ChunkId, Embedding (imutaveis)
+|   |   |-- repositories/          # Interfaces (ports)
+|   |   |-- services/              # Domain Services (chunking, embedding)
+|   |
+|   |-- application/               # Casos de uso - orquestracao
+|   |   |-- use_cases/             # IngestDocumentsUseCase, GetHealthStatusUseCase
+|   |   |-- dto/                   # Data Transfer Objects
+|   |
+|   |-- infrastructure/            # Implementacoes concretas (adapters)
+|   |   |-- persistence/           # JSON/FAISS repositories + mappers
+|   |   |-- external/              # OpenAI embedder
+|   |   |-- message_queue/         # Redis worker
+|   |
+|   |-- interface/                 # API HTTP
+|   |   |-- api/
+|   |       |-- routes/            # FastAPI controllers
+|   |       |-- schemas/           # Pydantic models
+|   |
+|   |-- core/config.py             # Configuracoes
+|   |-- main.py                    # Entry point FastAPI
+|   `-- worker.py                  # Entry point worker
+|
+|-- tests/                         # Testes unitarios, integracao, E2E
 |-- data/
-|   |-- docs/
-|   `-- faiss/
+|   |-- docs/                      # Documentos de entrada (.txt)
+|   `-- faiss/                     # Indices vetoriais
 |-- docker-compose.yml
 |-- Dockerfile
 `-- requirements.txt
 ```
 
-## Pre-requisitos
+### Principios DDD Aplicados
+
+| Conceito | Implementacao |
+|----------|---------------|
+| **Entity** | `Document`, `Chunk` - identidade unica, lifecycle |
+| **Value Object** | `DocumentId`, `ChunkId`, `Embedding` - imutaveis, validados |
+| **Repository** | Interfaces no Domain, implementacoes na Infrastructure |
+| **Domain Service** | `ChunkingService`, `EmbeddingService` - logica compartilhada |
+| **Application Service** | `IngestDocumentsUseCase` - orquestracao |
+| **Anti-Corruption Layer** | Mappers isolam modelo de persistencia |
+
+### Princípios SOLID Aplicados
+
+| Princípio | Implementação | Benefício |
+|-----------|---------------|-----------|
+| **S**ingle Responsibility | Strategies, Specifications, Events separados | Código coeso e testável |
+| **O**pen/Closed | Strategy Pattern, Specification Pattern | Extensível sem modificação |
+| **L**iskov Substitution | Todas as estratégias de chunking substituíveis | Polimorfismo seguro |
+| **I**nterface Segregation | `ReadRepository`, `WriteRepository` separados | Menor acoplamento |
+| **D**ependency Inversion | Injeção via construtor, Abstract Factory | Testável e flexível |
+
+### Patterns Implementados
+
+| Pattern | Onde | Propósito |
+|---------|------|-----------|
+| **Strategy** | `app/domain/strategies/` | Múltiplos algoritmos de chunking |
+| **Specification** | `app/domain/specifications/` | Composição de regras de filtro |
+| **Repository** | `app/domain/repositories/` | Abstração de persistência |
+| **Unit of Work** | `app/domain/repositories/unit_of_work.py` | Transações |
+| **Event-Driven** | `app/domain/events/` | Desacoplamento via eventos |
+| **Factory** | `app/domain/factories/` | Criação de objetos |
+| **Mapper** | `app/infrastructure/persistence/mappers/` | ACL isolando domínio |
+
+## Pré-requisitos
 
 - Docker e Docker Compose
 - Chave da OpenAI (`OPENAI_API_KEY`)
@@ -139,7 +200,106 @@ Para rodar o worker local:
 python -m app.worker
 ```
 
-## Contribuicao
+## Testes
+
+O projeto inclui testes em **6 camadas** (27 testes no total):
+
+### Rodar todos os testes
+```bash
+python run_tests.py
+```
+
+### Rodar com pytest
+```bash
+pytest tests/ -v
+```
+
+### Testes individuais por camada
+```bash
+# Domain Layer (Entities, Value Objects, Domain Services)
+python tests/test_domain.py
+
+# Application Layer (Use Cases)
+python tests/test_application.py
+
+# Infrastructure Layer (Repositories, Mappers)
+python tests/test_infrastructure.py
+
+# Integration (API endpoints)
+python tests/test_integration.py
+
+# End-to-End (Fluxo completo)
+python tests/test_e2e.py
+
+# SOLID Principles (Validação arquitetural) ✅ NOVO
+python tests/test_solid.py
+```
+
+### Cobertura de Testes
+
+| Suite | Foco | Testes |
+|-------|------|--------|
+| `test_domain.py` | Entities, Value Objects, Strategies, Specifications | 9 |
+| `test_application.py` | Use Cases, DTOs | 4 |
+| `test_infrastructure.py` | Repositories, Mappers | 3 |
+| `test_integration.py` | FastAPI endpoints | 3 |
+| `test_e2e.py` | Fluxo completo com mocks | 4 |
+| `test_solid.py` | SRP, OCP, LSP, ISP, DIP | 7 |
+| **Total** | | **30** |
+
+### Resultado esperado
+```
+============================================================
+📊 TEST SUMMARY
+============================================================
+✅ PASSED: Domain Layer Tests
+✅ PASSED: Application Layer Tests
+✅ PASSED: Infrastructure Layer Tests
+✅ PASSED: Integration Tests
+✅ PASSED: End-to-End Tests
+✅ PASSED: SOLID Principles Tests
+
+Results: 6/6 test suites passed (27 testes)
+🎉 ALL TESTS PASSED!
+============================================================
+```
+
+## Documentação
+
+- **[Arquitetura DDD](docs/ddd-architecture.md)** - Diagramas e explicação da arquitetura em camadas
+- **[Princípios SOLID](docs/solid-principles.md)** - Como cada princípio foi aplicado
+
+## Exemplos de Uso
+
+### Strategy Pattern (OCP)
+```python
+from app.domain.strategies import SentenceAwareChunking, FixedSizeChunking
+from app.domain.services.strategy_based_chunking_service import StrategyBasedChunkingService
+
+# Escolher estratégia em runtime
+strategy = SentenceAwareChunking()
+service = StrategyBasedChunkingService(strategy)
+chunks = service.chunk_document(document, chunk_size=500, overlap=100)
+```
+
+### Specification Pattern (OCP)
+```python
+from app.domain.specifications import PROCESSED, TXT_FILES
+
+# Compor regras sem modificar classes
+processed_txt = PROCESSED.and_(TXT_FILES)
+docs = [d for d in all_docs if processed_txt.is_satisfied_by(d)]
+```
+
+### Event-Driven (DIP)
+```python
+from app.domain.events import EventBus, MetricsEventHandler
+
+event_bus = EventBus()
+event_bus.subscribe(DocumentProcessingCompleted, MetricsEventHandler())
+```
+
+## Contribuição
 
 1. Faça um fork do projeto
 2. Crie uma branch de feature (`git checkout -b feature/minha-feature`)
