@@ -29,5 +29,8 @@ class Embedding:
     def to_numpy(self) -> np.ndarray:
         return np.array(self.vector, dtype=np.float32)
 
+    def to_list(self) -> List[float]:
+        return list(self.vector)
+
     def __len__(self) -> int:
         return self.dimensions
